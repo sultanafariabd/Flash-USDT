@@ -1,0 +1,85 @@
+name: Update README
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Update README Image Section
+        run: |
+          python -c "
+          import requests
+          import re
+          from bs4 import BeautifulSoup
+
+          readme_path = 'README.md'
+          wiki_url = 'https://en.wikipedia.org/wiki/File:Tether_Logo.svg'
+
+          try:
+              response = requests.get(wiki_url)
+              response.raise_for_status()
+              soup = BeautifulSoup(response.content, 'html.parser')
+              full_image_link = soup.find('div', {'class': 'fullImageLink'})
+              if full_image_link:
+                  image_tag = full_image_link.find('a')
+                  if image_tag and image_tag.has_attr('href'):
+                      image_url = 'https:' + image_tag['href']
+                  else:
+                      image_url = None
+              else:
+                  image_url = None
+          except Exception as e:
+              print(f'Error fetching image from Wikipedia: {e}')
+              image_url = None
+
+          if not image_url:
+              print('Could not find image on Wikipedia page, exiting without changes.')
+              exit(0)
+
+          image_markdown = f'![Tether Logo from Wikipedia]({image_url})'
+          start_marker = '<!-- START_IMAGE_SECTION -->'
+          end_marker = '<!-- END_IMAGE_SECTION -->'
+
+          with open(readme_path, 'r') as f:
+              content = f.read()
+
+          new_section_content = f'{start_marker}\\n{image_markdown}\\n{end_marker}'
+
+          new_readme_content = re.sub(
+              f'{re.escape(start_marker)}.*?{re.escape(end_marker)}',
+              new_section_content,
+              content,
+              flags=re.DOTALL
+          )
+
+          if new_readme_content != content:
+              with open(readme_path, 'w') as f:
+                  f.write(new_readme_content)
+              print(f'README.md updated with image: {image_url}')
+          else:
+              print('README.md is already up to date. No changes made.')
+          "
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "docs: Update image in README from Wikipedia"
+          branch: main
